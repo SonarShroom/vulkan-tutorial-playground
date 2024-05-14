@@ -1,0 +1,9 @@
+{
+	"name": "vulkan-playground",
+	"dependencies": [
+		"glm",
+		"glfw3",
+		"vulkan",
+		"vulkan-headers"
+	]
+}

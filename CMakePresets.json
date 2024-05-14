@@ -1,0 +1,23 @@
+{
+	"version": 6,
+	"configurePresets": [
+		{
+			"name": "debug",
+			"description": "Default debug configuration",
+			"toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug"
+			},
+			"generator": "Ninja"
+		},
+		{
+			"name": "release",
+			"description": "Default debug configuration",
+			"toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release"
+			},
+			"generator": "Ninja"
+		}
+	]
+}
