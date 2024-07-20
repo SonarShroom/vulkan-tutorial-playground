@@ -3,6 +3,7 @@
 
 #include <array>
 #include <iostream>
+#include <optional>
 #include <vector>
 #include <span>
 #include <stdexcept>
@@ -68,7 +69,7 @@ public:
 
     ~HelloTriangleApplication()
     {
-        if (ENABLE_VK_VALIDATION_LAYERS)
+        if constexpr (ENABLE_VK_VALIDATION_LAYERS)
         {
             DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         }
@@ -129,10 +130,11 @@ private:
     void initVulkan()
     {
         createInstance();
-        if (ENABLE_VK_VALIDATION_LAYERS)
+        if constexpr (ENABLE_VK_VALIDATION_LAYERS)
         {
             setupDebugMessenger();
         }
+        pickPhysicalDevice();
     }
 
     void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
@@ -140,7 +142,7 @@ private:
         createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
         createInfo.messageSeverity =
             VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-            VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+            //VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
             VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
             VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
         createInfo.messageType =
@@ -198,7 +200,7 @@ private:
         const char** exts = glfwGetRequiredInstanceExtensions(&numExts);
 
         std::vector<const char*> requiredExtensions(exts, exts + numExts);
-        if (ENABLE_VK_VALIDATION_LAYERS)
+        if constexpr (ENABLE_VK_VALIDATION_LAYERS)
         {
             requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         }
@@ -234,9 +236,12 @@ private:
 
     void createInstance()
     {
-        if (ENABLE_VK_VALIDATION_LAYERS && !checkValidationLayerSupport())
+        if constexpr (ENABLE_VK_VALIDATION_LAYERS)
         {
-            throw std::runtime_error("Validation layers requested, but not available.");
+            if (!checkValidationLayerSupport())
+            {
+                throw std::runtime_error("Validation layers requested, but not available.");
+            }
         }
         VkApplicationInfo appInfo {};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -274,9 +279,78 @@ private:
         }
     }
 
+    void pickPhysicalDevice()
+    {
+        uint32_t deviceCount { };
+        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+        if (!deviceCount)
+        {
+            throw std::runtime_error("Failed to find GPUs with Vulkan support!");
+        }
+
+        constexpr auto _isDeviceSuitable = [](const auto& device)
+        {
+            struct QueueFamilyIndicies
+            {
+                std::optional<uint32_t> graphicsFamily;
+
+                auto isComplete() -> bool
+                {
+                    return graphicsFamily.has_value();
+                }
+            };
+            constexpr auto _findQueueFamilies = [](const auto& device)
+            {
+                QueueFamilyIndicies indicies;
+                uint32_t queueFamilyCount { };
+                vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+                
+                std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+                vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+                uint32_t i = 0;
+                for (const auto& queueFamily : queueFamilies)
+                {
+                    if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+                    {
+                        indicies.graphicsFamily = i;
+                    }
+                    i++;
+                }
+                return indicies;
+            };
+
+            /*VkPhysicalDeviceProperties props  { };
+            VkPhysicalDeviceFeatures feats      { };
+            vkGetPhysicalDeviceProperties(device, &props);
+            vkGetPhysicalDeviceFeatures(device, &feats);*/
+
+            return _findQueueFamilies(device).isComplete();
+        };
+        std::vector<VkPhysicalDevice> devices(deviceCount);
+        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+        for (const auto& _device : devices)
+        {
+            if (_isDeviceSuitable(_device))
+            {
+                device = _device;
+                break;
+            }
+        }
+        if (!device)
+        {
+            throw std::runtime_error("Failed to find a suitable GPU!");
+        }
+    }
+
     GLFWwindow* window {};
     VkInstance instance {};
+    VkPhysicalDevice device { VK_NULL_HANDLE };
+
+#ifndef NDEBUG
     VkDebugUtilsMessengerEXT debugMessenger {};
+#endif
 };
 
 int main() {
