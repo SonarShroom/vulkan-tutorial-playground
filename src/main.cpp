@@ -1,14 +1,18 @@
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
 #include <array>
 #include <iostream>
 #include <optional>
 #include <vector>
+#include <set>
 #include <span>
 #include <stdexcept>
 #include <string_view>
 #include <cstdlib>
+
+#define VK_USE_PLATFORM_WIN32_KHR
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 
 constexpr int WIDTH = 800;
 constexpr int HEIGHT = 600;
@@ -73,6 +77,7 @@ public:
         {
             DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         }
+        vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyDevice(device, nullptr);
         vkDestroyInstance(instance, nullptr);
         glfwDestroyWindow(window);
@@ -135,6 +140,7 @@ private:
         {
             setupDebugMessenger();
         }
+        createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
     }
@@ -283,13 +289,22 @@ private:
         }
     }
 
+    void createSurface()
+    {
+        if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to create window surface!");
+        }
+    }
+
     struct QueueFamilyIndicies
     {
         std::optional<uint32_t> graphicsFamily;
+        std::optional<uint32_t> presentFamily;
 
         auto isComplete() -> bool
         {
-            return graphicsFamily.has_value();
+            return graphicsFamily.has_value() && presentFamily.has_value();
         }
     };
 
@@ -308,6 +323,13 @@ private:
             if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
             {
                 indicies.graphicsFamily = i;
+            }
+
+            VkBool32 presentSupport { };
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+            if (presentSupport)
+            {
+                indicies.presentFamily = i;
             }
 
             if (indicies.isComplete())
@@ -359,17 +381,23 @@ private:
         auto indicies = findQueueFamilies(physicalDevice);
 
         float queuePriority = 1.0f;
-        VkDeviceQueueCreateInfo queueCreateInfo {
-            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = indicies.graphicsFamily.value(),
-            .queueCount = 1,
-            .pQueuePriorities = &queuePriority,
-        };
+        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+        std::set<uint32_t> uniqueQueueFamilies { indicies.graphicsFamily.value(), indicies.presentFamily.value() };
         VkPhysicalDeviceFeatures deviceFeatures {};
+        for (const auto& queueFamilyIndex : uniqueQueueFamilies)
+        {
+            VkDeviceQueueCreateInfo queueCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                .queueFamilyIndex = queueFamilyIndex,
+                .queueCount = 1,
+                .pQueuePriorities = &queuePriority
+            };
+            queueCreateInfos.push_back(queueCreateInfo);
+        }
         VkDeviceCreateInfo createInfo {
             .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-            .queueCreateInfoCount = 1,
-            .pQueueCreateInfos = &queueCreateInfo,
+            .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
+            .pQueueCreateInfos = queueCreateInfos.data(),
             .enabledLayerCount = 0,
             .enabledExtensionCount = 0,
             .pEnabledFeatures = &deviceFeatures,
@@ -386,14 +414,17 @@ private:
         }
 
         vkGetDeviceQueue(device, indicies.graphicsFamily.value(), 0, &graphicsQueue);
+        vkGetDeviceQueue(device, indicies.presentFamily.value(), 0, &presentQueue);
     }
 
     GLFWwindow* window                      { };
 
     VkInstance instance                     { };
+    VkSurfaceKHR surface                    { };
     VkPhysicalDevice physicalDevice         { VK_NULL_HANDLE };
     VkDevice device                         { };
     VkQueue graphicsQueue                   { };
+    VkQueue presentQueue                    { };
 
 #ifndef NDEBUG
     VkDebugUtilsMessengerEXT debugMessenger { };
